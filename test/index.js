@@ -51,6 +51,47 @@ test('can read & write & del', async (assert) => {
   assert.end()
 })
 
+test('can read & write & del with ensure', async (assert) => {
+  const dbPath = path.join(os.tmpdir(), uuid())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {})
+
+  await levelDB.ensure()
+  await levelDB.put('foo', 'bar')
+
+  await levelDB.ensure()
+  await levelDB.put('foo2', 'bar2')
+
+  await levelDB.ensure()
+  const { err, data: value1 } = await levelDB.get('foo', {
+    asBuffer: false
+  })
+  assert.ifError(err)
+  assert.equal(value1, 'bar')
+
+  await levelDB.ensure()
+  const { err: err2, data: value2 } = await levelDB.get('foo2', {
+    asBuffer: false
+  })
+  assert.ifError(err2)
+  assert.equal(value2, 'bar2')
+
+  await levelDB.ensure()
+  await levelDB.del('foo')
+
+  await levelDB.ensure()
+  const { err: err3, data: value3 } = await levelDB.get('foo')
+  assert.ok(err3)
+  assert.equal(value3, undefined)
+  assert.ok(/Key not found/i.test(err3.message))
+  assert.ok(err3.notFound)
+
+  await levelDB.close()
+  await util.promisify((cb) => {
+    LevelDown.destroy(dbPath, cb)
+  })()
+  assert.end()
+})
+
 test('can batch writes', async (assert) => {
   const dbPath = path.join(os.tmpdir(), uuid())
   const levelDB = new AsyncLevel(LevelDown(dbPath), {})

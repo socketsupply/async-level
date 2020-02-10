@@ -1,6 +1,8 @@
 'use strict'
 
 const assert = require('assert')
+const fs = require('fs')
+const util = require('util')
 
 const LevelAsyncIterator = require('./level-async-iterator.js')
 
@@ -44,6 +46,48 @@ class AsyncLevelDown {
     this.encode = options.encode || identity
     // Function to decode values
     this.decode = options.decode || identity
+
+    this._isOpen = false
+    this._pendingEnsure = null
+  }
+
+  async ensure () {
+    if (this._isOpen) return
+    if (this._pendingEnsure) return this._pendingEnsure
+
+    this._pendingEnsure = this._ensure()
+    const { err } = await this._pendingEnsure
+    this._pendingEnsure = null
+
+    /**
+     * In this case just throw the error since no-one handles
+     * this error properly. If we do not throw we would have
+     * to check in effectively every method.
+     */
+    if (err) {
+      throw err
+    }
+  }
+
+  async _ensure () {
+    const loc = this.leveldown.location
+
+    if (loc && typeof loc === 'string') {
+      await util.promisify((cb) => {
+        fs.mkdir(loc, {
+          recursive: true
+        }, cb)
+      })()
+    }
+
+    const { err } = await this.open()
+    if (err) {
+      this.leveldown = null
+      return { err }
+    }
+
+    this._isOpen = true
+    return {}
   }
 
   open () {
