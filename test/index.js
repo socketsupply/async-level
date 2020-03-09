@@ -229,6 +229,9 @@ test('itr can batch next', async (assert) => {
     { type: 'put', key: '/foo', value: 'one' },
     { type: 'put', key: '/foo/one', value: 'two' },
     { type: 'put', key: '/foo/two', value: 'three' },
+    { type: 'put', key: '/foo/two2', value: 'eight' },
+    { type: 'put', key: '/foo/two3', value: 'nine' },
+    { type: 'put', key: '/foo/two4', value: 'ten' },
     { type: 'put', key: '/bar', value: 'one' },
     { type: 'put', key: '/bar/one', value: 'two' },
     { type: 'put', key: '/bar/two', value: 'three' }
@@ -250,8 +253,10 @@ test('itr can batch next', async (assert) => {
   assert.ok(r.value.data.values)
 
   const { keys, values } = r.value.data
-  assert.deepEqual(keys, ['/foo/one', '/foo/two'])
-  assert.deepEqual(values, ['two', 'three'])
+  assert.deepEqual(keys, [
+    '/foo/one', '/foo/two', '/foo/two2', '/foo/two3', '/foo/two4'
+  ])
+  assert.deepEqual(values, ['two', 'three', 'eight', 'nine', 'ten'])
 
   await levelDB.close()
   await util.promisify((cb) => {

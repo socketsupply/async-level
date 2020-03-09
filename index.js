@@ -334,9 +334,9 @@ class LevelAsyncIterator {
         }
       }
 
-      for (let i = 0; i < cache.length; i++) {
+      for (let i = cache.length - 1; i >= 0; i -= 2) {
         keys.push(cache[i])
-        values.push(cache[i + 1])
+        values.push(cache[i - 1])
       }
       cache.length = 0
       cb(null, keys, values)
