@@ -219,6 +219,47 @@ test('can query a range', async (assert) => {
   assert.end()
 })
 
+test('itr can batch next', async (assert) => {
+  const dbPath = path.join(os.tmpdir(), uuid())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {})
+
+  await levelDB.open()
+
+  await levelDB.batch([
+    { type: 'put', key: '/foo', value: 'one' },
+    { type: 'put', key: '/foo/one', value: 'two' },
+    { type: 'put', key: '/foo/two', value: 'three' },
+    { type: 'put', key: '/bar', value: 'one' },
+    { type: 'put', key: '/bar/one', value: 'two' },
+    { type: 'put', key: '/bar/two', value: 'three' }
+  ])
+
+  const itr1 = levelDB.iterator({
+    gte: '/foo/',
+    lte: '/foo/\xFF',
+    keyAsBuffer: false,
+    valueAsBuffer: false
+  })
+
+  const r = await itr1.batchNext()
+  assert.equal(r.done, false)
+  assert.ok(r.value)
+  assert.ifError(r.value.err)
+  assert.ok(r.value.data)
+  assert.ok(r.value.data.keys)
+  assert.ok(r.value.data.values)
+
+  const { keys, values } = r.value.data
+  assert.deepEqual(keys, ['/foo/one', '/foo/two'])
+  assert.deepEqual(values, ['two', 'three'])
+
+  await levelDB.close()
+  await util.promisify((cb) => {
+    LevelDown.destroy(dbPath, cb)
+  })()
+  assert.end()
+})
+
 test('json encode & decode', async (assert) => {
   const dbPath = path.join(os.tmpdir(), uuid())
   const levelDB = new AsyncLevel(LevelDown(dbPath), {

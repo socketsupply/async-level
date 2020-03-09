@@ -4,8 +4,6 @@ const assert = require('assert')
 const fs = require('fs')
 const util = require('util')
 
-const LevelAsyncIterator = require('./level-async-iterator.js')
-
 const notFoundRegex = /notfound/i
 
 class EncodingError extends Error {
@@ -162,8 +160,7 @@ class AsyncLevelDown {
 
   iterator (options) {
     const rawItr = this.leveldown.iterator(options)
-    const decodeItr = new DecodeIterator(rawItr, this.decode)
-    return new LevelAsyncIterator(decodeItr)
+    return new LevelAsyncIterator(rawItr, this.decode)
   }
 
   batch (operations, options) {
@@ -194,39 +191,199 @@ class AsyncLevelDown {
   }
 }
 
-class DecodeIterator {
-  constructor (iterator, decode) {
-    this._iterator = iterator
+/**
+ * The underlying implementation of `leveldown` has a "feature"
+ *    where the first call to `next()` ignores the HighWatermark
+ *    and the `iterator.cache` functionality.
+ *
+ * This variable `landed` get's reset every time you call
+ *    seek() on the iterator. It's meant to allow you
+ *    to read only one value at a time when calling `seek()`
+ *    instead of filling up the higherwatermark.
+ *
+ * For our use case when not doing seeking and just reading
+ *    all values for a given range query we want to basically
+ *    do two calls to `next()` in `batchNext()` for the very
+ *    first time so that we can batch read upto the
+ *    `HighWaterMark` or upto 1000 key/value pairs.
+ */
+class LevelAsyncIterator {
+  constructor (levelDownItr, decode) {
+    this._iterator = levelDownItr
+    this._landed = false
+
     this.decode = decode
+    this.finished = false
+    this.pendingNext = false
   }
 
-  next (callback) {
-    this._iterator.next((err, key, value) => {
-      if (err) return callback(err)
-
-      if (key === undefined && value === undefined) {
-        return callback(err, key, value)
+  /**
+   * TODO: Support parallel iteration.
+   * This class has a lot of simplification in it based on the
+   * assumption that the consumer will only call `next()`
+   * sequentially.
+   *
+   * See https://github.com/nodejs/node/blob/master/lib/internal/streams/async_iterator.js
+   */
+  next () {
+    if (this.pendingNext) {
+      throw new Error(
+        'It is not safe to call Iterator.next() concurrently'
+      )
+    }
+    this.pendingNext = true
+    return new Promise((resolve, reject) => {
+      if (this.finished) {
+        this.pendingNext = false
+        return resolve({ done: true })
       }
 
-      let decoded
-      try {
-        decoded = this.decode(value)
-      } catch (err) {
-        return callback(
-          new EncodingError(err, 'decode in next(): ')
-        )
-      }
+      this._iterator.next((err, key, value) => {
+        this.pendingNext = false
+        if (err) {
+          this._finish(resolve, err)
+          return
+        }
 
-      callback(null, key, decoded)
+        if (key === undefined && value === undefined) {
+          this._finish(resolve, null)
+          return
+        }
+
+        let decoded = null
+        if (value !== null) {
+          try {
+            decoded = this.decode(value)
+          } catch (err) {
+            const encErr = new EncodingError(err, 'decode in next(): ')
+            this._finish(resolve, encErr)
+            return
+          }
+        }
+
+        resolve({
+          done: false,
+          value: { data: { key, value: decoded } }
+        })
+      })
     })
   }
 
-  seek (target) {
-    return this._iterator.seek(target)
+  _batchNext (cb) {
+    const self = this
+    const keys = []
+    const values = []
+
+    self._iterator.next(onNext)
+
+    function onNext (err, key, value) {
+      if (err) {
+        return cb(err)
+      }
+
+      if (key === undefined && value === undefined) {
+        if (keys.length > 0 || values.length > 0) {
+          cb(null, keys, values)
+        } else {
+          cb()
+        }
+        return
+      }
+
+      keys.push(key)
+      values.push(value)
+
+      const cache = self._iterator.cache
+      if (!cache) {
+        throw new Error('LevelDown does not have cache array')
+      }
+
+      if (!self._landed) {
+        self._landed = true
+        if (cache.length === 0) {
+          return self._iterator.next(onNext)
+        }
+      }
+
+      for (let i = 0; i < cache.length; i++) {
+        keys.push(cache[i])
+        values.push(cache[i + 1])
+      }
+      cache.length = 0
+      cb(null, keys, values)
+    }
   }
 
-  end (callback) {
-    return this._iterator.end(callback)
+  /**
+   * This relies on the internals of `leveldown`. It will throw
+   * an exception if leveldown does not support the use case.
+   */
+  batchNext () {
+    if (this.pendingNext) {
+      throw new Error(
+        'It is not safe to call Iterator.batchNext() concurrently'
+      )
+    }
+    this.pendingNext = true
+    return new Promise((resolve, reject) => {
+      if (this.finished) {
+        this.pendingNext = false
+        return resolve({ done: true })
+      }
+
+      this._batchNext((err, keys, values) => {
+        this.pendingNext = false
+        if (err) {
+          this._finish(resolve, err)
+          return
+        }
+
+        if (keys === undefined && values === undefined) {
+          this._finish(resolve, null)
+          return
+        }
+
+        resolve({
+          done: false,
+          value: { data: { keys, values } }
+        })
+      })
+    })
+  }
+
+  _finish (nextResolve, err) {
+    if (this.finished) {
+      return onFinish(null)
+    }
+
+    this.finished = true
+    this._iterator.end(onFinish)
+
+    function onFinish (finishErr) {
+      if (err || finishErr) {
+        return nextResolve({
+          done: false,
+          value: { err: err || finishErr }
+        })
+      }
+
+      return nextResolve({ done: true })
+    }
+  }
+
+  [Symbol.asyncIterator] () {
+    return this
+  }
+
+  async close () {
+    return new Promise((resolve, reject) => {
+      this._finish((result) => {
+        if (result.value && result.value.err) {
+          return resolve({ err: result.value.err })
+        }
+        resolve({})
+      }, null)
+    })
   }
 }
 
