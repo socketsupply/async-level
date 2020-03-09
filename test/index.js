@@ -40,7 +40,7 @@ test('can read & write & del', async (assert) => {
 
   const { err: err3, data: value3 } = await levelDB.get('foo')
   assert.ok(err3)
-  assert.equal(value3, undefined)
+  assert.equal(value3, null)
   assert.ok(/Key not found/i.test(err3.message))
   assert.ok(err3.notFound)
 
@@ -81,7 +81,7 @@ test('can read & write & del with ensure', async (assert) => {
   await levelDB.ensure()
   const { err: err3, data: value3 } = await levelDB.get('foo')
   assert.ok(err3)
-  assert.equal(value3, undefined)
+  assert.equal(value3, null)
   assert.ok(/Key not found/i.test(err3.message))
   assert.ok(err3.notFound)
 

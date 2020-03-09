@@ -4,6 +4,7 @@ const assert = require('assert')
 const fs = require('fs')
 const util = require('util')
 
+const mkdir = util.promisify(fs.mkdir)
 const notFoundRegex = /notfound/i
 
 class EncodingError extends Error {
@@ -28,6 +29,42 @@ class NotFoundError extends Error {
     this.name = 'NotFoundError'
     this.type = 'async-level.not-found'
     this.notFound = true
+  }
+}
+
+class Result {
+  constructor (err, data) {
+    this.err = err
+    this.data = data
+  }
+}
+
+class BatchOp {
+  constructor (type, key, value) {
+    this.type = type
+    this.key = key
+    this.value = value
+  }
+}
+
+class IteratorResult {
+  constructor (done, value) {
+    this.done = done
+    this.value = value
+  }
+}
+
+class KVPair {
+  constructor (key, value) {
+    this.key = key
+    this.value = value
+  }
+}
+
+class MultiKVPair {
+  constructor (keys, values) {
+    this.keys = keys
+    this.values = values
   }
 }
 
@@ -71,11 +108,7 @@ class AsyncLevelDown {
     const loc = this.leveldown.location
 
     if (loc && typeof loc === 'string') {
-      await util.promisify((cb) => {
-        fs.mkdir(loc, {
-          recursive: true
-        }, cb)
-      })()
+      await mkdir(loc, { recursive: true })
     }
 
     const { err } = await this.open()
@@ -91,7 +124,7 @@ class AsyncLevelDown {
   open () {
     return new Promise((resolve) => {
       this.leveldown.open((err) => {
-        resolve(err ? { err } : {})
+        resolve(new Result(err, null))
       })
     })
   }
@@ -99,7 +132,7 @@ class AsyncLevelDown {
   close () {
     return new Promise((resolve) => {
       this.leveldown.close((err) => {
-        resolve(err ? { err } : {})
+        resolve(new Result(err, null))
       })
     })
   }
@@ -109,14 +142,13 @@ class AsyncLevelDown {
     try {
       rawValue = this.encode(value)
     } catch (err) {
-      return {
-        err: new EncodingError(err, 'encode in put(): ')
-      }
+      const encErr = new EncodingError(err, 'encode in put(): ')
+      return new Result(encErr, null)
     }
 
     return new Promise((resolve) => {
       this.leveldown.put(key, rawValue, options || null, (err) => {
-        resolve(err ? { err } : {})
+        resolve(new Result(err, null))
       })
     })
   }
@@ -126,26 +158,24 @@ class AsyncLevelDown {
       this.leveldown.get(key, options || null, (err, value) => {
         if (err) {
           if (notFoundRegex.test(err.message)) {
-            return resolve({
-              err: new NotFoundError(
-                'Key not found in database [' + key + ']'
-              )
-            })
+            const notFoundErr = new NotFoundError(
+              'Key not found in database [' + key + ']'
+            )
+            return resolve(new Result(notFoundErr, null))
           }
 
-          return resolve({ err })
+          return resolve(new Result(err, null))
         }
 
         let decoded
         try {
           decoded = this.decode(value)
         } catch (err) {
-          resolve({
-            err: new EncodingError(err, 'decode in get(): ')
-          })
+          const encErr = new EncodingError(err, 'decode in get(): ')
+          resolve(new Result(encErr, null))
         }
 
-        resolve({ data: decoded })
+        resolve(new Result(null, decoded))
       })
     })
   }
@@ -153,7 +183,7 @@ class AsyncLevelDown {
   del (key, options) {
     return new Promise((resolve) => {
       this.leveldown.del(key, options || null, (err) => {
-        resolve(err ? { err } : {})
+        resolve(new Result(err, null))
       })
     })
   }
@@ -164,27 +194,26 @@ class AsyncLevelDown {
   }
 
   batch (operations, options) {
-    const rawOperations = new Array(operations.length)
-    for (let i = 0; i < operations.length; i++) {
-      const op = operations[i]
-      let encodedValue
-      try {
-        encodedValue = this.encode(op.value)
-      } catch (err) {
-        return {
-          err: new EncodingError(err, 'encode in batch(): ')
+    return new Promise((resolve) => {
+      const rawOperations = new Array(operations.length)
+      for (let i = 0; i < operations.length; i++) {
+        const op = operations[i]
+        let encodedValue
+        try {
+          encodedValue = this.encode(op.value)
+        } catch (err) {
+          const encErr = new EncodingError(err, 'encode in batch(): ')
+          return resolve(new Result(encErr, null))
         }
+
+        rawOperations[i] = new BatchOp(
+          op.type, op.key, encodedValue
+        )
       }
 
-      rawOperations[i] = new BatchOp(
-        op.type, op.key, encodedValue
-      )
-    }
-
-    return new Promise((resolve) => {
       this.leveldown.batch(
         rawOperations, options || null, (err) => {
-          resolve(err ? { err } : {})
+          resolve(new Result(err, null))
         }
       )
     })
@@ -232,10 +261,10 @@ class LevelAsyncIterator {
       )
     }
     this.pendingNext = true
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (this.finished) {
         this.pendingNext = false
-        return resolve({ done: true })
+        return resolve(new IteratorResult(true, null))
       }
 
       this._iterator.next((err, key, value) => {
@@ -261,10 +290,10 @@ class LevelAsyncIterator {
           }
         }
 
-        resolve({
-          done: false,
-          value: { data: { key, value: decoded } }
-        })
+        resolve(new IteratorResult(
+          false,
+          new Result(null, new KVPair(key, decoded))
+        ))
       })
     })
   }
@@ -325,10 +354,10 @@ class LevelAsyncIterator {
       )
     }
     this.pendingNext = true
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (this.finished) {
         this.pendingNext = false
-        return resolve({ done: true })
+        return resolve(new IteratorResult(true, null))
       }
 
       this._batchNext((err, keys, values) => {
@@ -343,10 +372,10 @@ class LevelAsyncIterator {
           return
         }
 
-        resolve({
-          done: false,
-          value: { data: { keys, values } }
-        })
+        resolve(new IteratorResult(
+          false,
+          new Result(null, new MultiKVPair(keys, values))
+        ))
       })
     })
   }
@@ -361,13 +390,12 @@ class LevelAsyncIterator {
 
     function onFinish (finishErr) {
       if (err || finishErr) {
-        return nextResolve({
-          done: false,
-          value: { err: err || finishErr }
-        })
+        return nextResolve(new IteratorResult(
+          false, new Result(err || finishErr, null)
+        ))
       }
 
-      return nextResolve({ done: true })
+      return nextResolve(new IteratorResult(true, null))
     }
   }
 
@@ -376,22 +404,12 @@ class LevelAsyncIterator {
   }
 
   async close () {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       this._finish((result) => {
-        if (result.value && result.value.err) {
-          return resolve({ err: result.value.err })
-        }
-        resolve({})
+        const v = result.value
+        resolve(new Result(v && v.err ? v.err : null, null))
       }, null)
     })
-  }
-}
-
-class BatchOp {
-  constructor (type, key, value) {
-    this.type = type
-    this.key = key
-    this.value = value
   }
 }
 
