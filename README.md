@@ -7,10 +7,12 @@ Create an Async friendly interface around leveldown.
 ```js
 const LevelDown = require('leveldown')
 const AsyncLevel = require('async-level')
+const charwise = require('charwise-compact')
 
 const leveldown = LevelDown('/db/path')
 const db = new AsyncLevel(leveldown, {
   encode: JSON.stringify,
+  keyEncode: charwise.encode,
   decode: JSON.parse
 })
 
@@ -19,30 +21,30 @@ await levelDB.open()
 const { err } = await levelDB.batch([
   {
     type: 'put',
-    key: 'foo',
+    key: ['foo', 'one'],
     value: { any: 'json object' }
   },
   {
     type: 'put',
-    key: 'foo2',
+    key: ['foo', 'two'],
     value: { your: 'encode func called' }
   }
 ])
 
-const { err } = await levelDB.put('foo3', {
+const { err } = await levelDB.put(['foo', 'three'], {
   id: 'use id',
   email: 'foo@gmail.com'
 })
 
-const { err, data: value } = await levelDB.get('foo')
+const { err, data: value } = await levelDB.get(['foo', 'one'])
 // value is decoded, with JSON.parse.
 
 // This returns an AsyncIterator instead of returning a leveldown
 // iterator object.
 // You can use for await (const pair of itr) loops over it.
 const itr1 = levelDB.iterator({
-  gte: '/foo/',
-  lte: '/foo/\xFF',
+  gte: ['foo', charwise.LO],
+  lte: ['foo', charwise.HI],
   keyAsBuffer: false
 })
 
@@ -59,7 +61,7 @@ This is a wrapper class around leveldown. It comes with a few
 features like
 
  - promises support
- - encode & decode
+ - encode, decode & keyEncode
  - `iterator()` method returns an `AsyncIterator` object that's
 compatible with `for await (...)` loops and generators.
 
