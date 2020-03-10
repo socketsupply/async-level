@@ -7,6 +7,7 @@ const util = require('util')
 const LevelDown = require('leveldown')
 const uuid = require('uuid')
 const test = require('@pre-bundled/tape')
+const charwise = require('charwise-compact')
 
 const AsyncLevel = require('../index.js')
 
@@ -320,6 +321,131 @@ test('json encode & decode', async (assert) => {
     LevelDown.destroy(dbPath, cb)
   })()
   assert.end()
+})
+
+test('charwise encode', async (assert) => {
+  const dbPath = path.join(os.tmpdir(), uuid())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {
+    encode: JSON.stringify,
+    keyEncode: charwise.encode,
+    decode: JSON.parse
+  })
+
+  await levelDB.open()
+
+  const r1 = await levelDB.put(
+    ['prefix', 'value', 10],
+    { hello: 'world' }
+  )
+  assert.ifError(r1.err)
+
+  const r2 = await levelDB.get(['prefix', 'value', 10])
+  assert.ifError(r2.err)
+  assert.deepEqual(r2.data, {
+    hello: 'world'
+  })
+
+  const r3 = await levelDB.del(['prefix', 'value', 10])
+  assert.ifError(r3.err)
+
+  const r4 = await levelDB.get(['prefix', 'value', 10])
+  assert.ok(r4.err)
+  assert.equal(r4.data, null)
+  assert.equal(r4.err.notFound, true)
+
+  const r5 = await levelDB.batch([
+    { type: 'put', key: ['prefix', 'value', 12], value: 'one' },
+    { type: 'put', key: ['prefix', 'value', 13], value: 'two' },
+    { type: 'put', key: ['prefix', 'value', 14], value: 'three' }
+  ])
+  assert.ifError(r5.err)
+
+  const values = await Promise.all([
+    levelDB.get(['prefix', 'value', 12]),
+    levelDB.get(['prefix', 'value', 13]),
+    levelDB.get(['prefix', 'value', 14])
+  ])
+  for (const res of values) {
+    assert.ifError(res.err)
+  }
+  assert.equal(values[0].data, 'one')
+  assert.equal(values[1].data, 'two')
+  assert.equal(values[2].data, 'three')
+
+  await levelDB.close()
+  await util.promisify((cb) => {
+    LevelDown.destroy(dbPath, cb)
+  })()
+  assert.end()
+})
+
+test('charwise encode iterator', async (assert) => {
+  const dbPath = path.join(os.tmpdir(), uuid())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {
+    encode: JSON.stringify,
+    keyEncode: charwise.encode,
+    decode: JSON.parse
+  })
+
+  await levelDB.open()
+
+  await levelDB.batch([
+    makePut(['foo']),
+    makePut(['foo', -51]),
+    makePut(['foo', -31]),
+    makePut(['foo', 1]),
+    makePut(['foo', 2]),
+    makePut(['foo', 11]),
+    makePut(['foo', 21]),
+    makePut(['foo', '-51']),
+    makePut(['foo', '-31']),
+    makePut(['foo', '1']),
+    makePut(['foo', '2']),
+    makePut(['foo', '11']),
+    makePut(['foo', '21']),
+    makePut(['bar!']),
+    makePut(['bar!', 'one']),
+    makePut(['bar!', 'two'])
+  ])
+
+  const itr1 = levelDB.iterator({
+    gte: [charwise.LO],
+    lte: [charwise.HI],
+    keyAsBuffer: false
+  })
+
+  const values1 = await drainIterator(itr1)
+  const keys = values1.map(r => r.key)
+  assert.equal(keys.length, 16)
+
+  assert.deepEqual(keys, [
+    'KJbar??!',
+    'KJbar??"Jone!',
+    'KJbar??"Jtwo!',
+    'KJfoo!',
+    'KJfoo"DE498M4.8_!',
+    'KJfoo"DE498M6.8_!',
+    'KJfoo"FE500M1!',
+    'KJfoo"FE500M2!',
+    'KJfoo"FE501M1.1!',
+    'KJfoo"FE501M2.1!',
+    'KJfoo"J-31!',
+    'KJfoo"J-51!',
+    'KJfoo"J1!',
+    'KJfoo"J11!',
+    'KJfoo"J2!',
+    'KJfoo"J21!'
+  ])
+
+  await levelDB.close()
+  await util.promisify((cb) => {
+    LevelDown.destroy(dbPath, cb)
+  })()
+  assert.end()
+
+  function makePut (key) {
+    return { type: 'put', key, value: 'A' }
+  }
 })
 
 async function drainIterator (itr) {

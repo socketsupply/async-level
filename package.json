@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "@pre-bundled/tape": "4.11.0",
+    "charwise-compact": "4.0.0",
     "leveldown": "5.4.1",
     "npm-bin-deps": "1.3.2",
     "uuid": "3.3.3"

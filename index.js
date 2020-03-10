@@ -6,6 +6,7 @@ const util = require('util')
 
 const mkdir = util.promisify(fs.mkdir)
 const notFoundRegex = /notfound/i
+const ltgtKeys = ['lt', 'gt', 'lte', 'gte', 'start', 'end']
 
 class EncodingError extends Error {
   constructor (cause, prefix) {
@@ -81,6 +82,8 @@ class AsyncLevelDown {
     this.encode = options.encode || identity
     // Function to decode values
     this.decode = options.decode || identity
+    // Functino to encode keys
+    this.keyEncode = options.keyEncode || identity
 
     this._isOpen = false
     this._pendingEnsure = null
@@ -138,58 +141,74 @@ class AsyncLevelDown {
   }
 
   put (key, value, options) {
-    let rawValue
-    try {
-      rawValue = this.encode(value)
-    } catch (err) {
-      const encErr = new EncodingError(err, 'encode in put(): ')
-      return new Result(encErr, null)
-    }
+    const encodedKey = this.keyEncode(key)
 
     return new Promise((resolve) => {
-      this.leveldown.put(key, rawValue, options || null, (err) => {
-        resolve(new Result(err, null))
-      })
+      let rawValue
+      try {
+        rawValue = this.encode(value)
+      } catch (err) {
+        const encErr = new EncodingError(err, 'encode in put(): ')
+        return resolve(new Result(encErr, null))
+      }
+
+      this.leveldown.put(
+        encodedKey, rawValue, options || null,
+        (err) => {
+          resolve(new Result(err, null))
+        }
+      )
     })
   }
 
   get (key, options) {
+    const encodedKey = this.keyEncode(key)
     return new Promise((resolve) => {
-      this.leveldown.get(key, options || null, (err, value) => {
-        if (err) {
-          if (notFoundRegex.test(err.message)) {
-            const notFoundErr = new NotFoundError(
-              'Key not found in database [' + key + ']'
-            )
-            return resolve(new Result(notFoundErr, null))
+      this.leveldown.get(
+        encodedKey, options || null,
+        (err, value) => {
+          if (err) {
+            if (notFoundRegex.test(err.message)) {
+              const notFoundErr = new NotFoundError(
+                'Key not found in database [' + key + ']'
+              )
+              return resolve(new Result(notFoundErr, null))
+            }
+
+            return resolve(new Result(err, null))
           }
 
-          return resolve(new Result(err, null))
-        }
+          let decoded
+          try {
+            decoded = this.decode(value)
+          } catch (err) {
+            const encErr = new EncodingError(err, 'decode in get(): ')
+            resolve(new Result(encErr, null))
+          }
 
-        let decoded
-        try {
-          decoded = this.decode(value)
-        } catch (err) {
-          const encErr = new EncodingError(err, 'decode in get(): ')
-          resolve(new Result(encErr, null))
+          resolve(new Result(null, decoded))
         }
-
-        resolve(new Result(null, decoded))
-      })
+      )
     })
   }
 
   del (key, options) {
+    const encodedKey = this.keyEncode(key)
     return new Promise((resolve) => {
-      this.leveldown.del(key, options || null, (err) => {
+      this.leveldown.del(encodedKey, options || null, (err) => {
         resolve(new Result(err, null))
       })
     })
   }
 
   iterator (options) {
-    const rawItr = this.leveldown.iterator(options)
+    const copyOpts = {}
+    for (const k of Object.keys(options)) {
+      copyOpts[k] = ltgtKeys.includes(k)
+        ? this.keyEncode(options[k]) : options[k]
+    }
+
+    const rawItr = this.leveldown.iterator(copyOpts)
     return new LevelAsyncIterator(rawItr, this.decode)
   }
 
@@ -206,8 +225,9 @@ class AsyncLevelDown {
           return resolve(new Result(encErr, null))
         }
 
+        const encodedKey = this.keyEncode(op.key)
         rawOperations[i] = new BatchOp(
-          op.type, op.key, encodedValue
+          op.type, encodedKey, encodedValue
         )
       }
 
