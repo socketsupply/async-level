@@ -70,6 +70,17 @@ Also note that this is a wrapped around `leveldown`; so it has
 all the same caveats as leveldown, for example if you call
 `get()` before `open()` finishes your node program just segfaults
 
+### `batchNext()` optimization.
+
+For some applications it's really useful to read a batch of
+key value pairs out of the `Iterator` in one go.
+
+The `AsyncIterator` supports an `await batchNext()` method that
+returns an array of keys & an array of values.
+
+The maximum length is 1000 and the maximum size is based on
+the highWaterMark that you pass to leveldown (default 16kb).
+
 ## install
 
 ```

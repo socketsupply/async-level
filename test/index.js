@@ -40,7 +40,7 @@ test('can read & write & del', async (assert) => {
 
   const { err: err3, data: value3 } = await levelDB.get('foo')
   assert.ok(err3)
-  assert.equal(value3, undefined)
+  assert.equal(value3, null)
   assert.ok(/Key not found/i.test(err3.message))
   assert.ok(err3.notFound)
 
@@ -81,7 +81,7 @@ test('can read & write & del with ensure', async (assert) => {
   await levelDB.ensure()
   const { err: err3, data: value3 } = await levelDB.get('foo')
   assert.ok(err3)
-  assert.equal(value3, undefined)
+  assert.equal(value3, null)
   assert.ok(/Key not found/i.test(err3.message))
   assert.ok(err3.notFound)
 
@@ -211,6 +211,52 @@ test('can query a range', async (assert) => {
   }, {
     key: '/bar/two', value: 'three'
   }])
+
+  await levelDB.close()
+  await util.promisify((cb) => {
+    LevelDown.destroy(dbPath, cb)
+  })()
+  assert.end()
+})
+
+test('itr can batch next', async (assert) => {
+  const dbPath = path.join(os.tmpdir(), uuid())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {})
+
+  await levelDB.open()
+
+  await levelDB.batch([
+    { type: 'put', key: '/foo', value: 'one' },
+    { type: 'put', key: '/foo/one', value: 'two' },
+    { type: 'put', key: '/foo/two', value: 'three' },
+    { type: 'put', key: '/foo/two2', value: 'eight' },
+    { type: 'put', key: '/foo/two3', value: 'nine' },
+    { type: 'put', key: '/foo/two4', value: 'ten' },
+    { type: 'put', key: '/bar', value: 'one' },
+    { type: 'put', key: '/bar/one', value: 'two' },
+    { type: 'put', key: '/bar/two', value: 'three' }
+  ])
+
+  const itr1 = levelDB.iterator({
+    gte: '/foo/',
+    lte: '/foo/\xFF',
+    keyAsBuffer: false,
+    valueAsBuffer: false
+  })
+
+  const r = await itr1.batchNext()
+  assert.equal(r.done, false)
+  assert.ok(r.value)
+  assert.ifError(r.value.err)
+  assert.ok(r.value.data)
+  assert.ok(r.value.data.keys)
+  assert.ok(r.value.data.values)
+
+  const { keys, values } = r.value.data
+  assert.deepEqual(keys, [
+    '/foo/one', '/foo/two', '/foo/two2', '/foo/two3', '/foo/two4'
+  ])
+  assert.deepEqual(values, ['two', 'three', 'eight', 'nine', 'ten'])
 
   await levelDB.close()
   await util.promisify((cb) => {
