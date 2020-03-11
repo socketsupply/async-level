@@ -222,7 +222,10 @@ test('can query a range', async (assert) => {
 
 test('itr can batch next', async (assert) => {
   const dbPath = path.join(os.tmpdir(), uuid())
-  const levelDB = new AsyncLevel(LevelDown(dbPath), {})
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {
+    encode: JSON.stringify,
+    decode: JSON.parse
+  })
 
   await levelDB.open()
 
