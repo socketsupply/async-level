@@ -392,9 +392,22 @@ class LevelAsyncIterator {
           return
         }
 
+        const decodedValues = []
+        for (const value of values) {
+          let decoded
+          try {
+            decoded = this.decode(value)
+          } catch (err) {
+            const encErr = new EncodingError(err, 'decode in batchNext(): ')
+            this._finish(resolve, encErr)
+            return
+          }
+          decodedValues.push(decoded)
+        }
+
         resolve(new IteratorResult(
           false,
-          new Result(null, new MultiKVPair(keys, values))
+          new Result(null, new MultiKVPair(keys, decodedValues))
         ))
       })
     })
