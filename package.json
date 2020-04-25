@@ -7,8 +7,27 @@
     "lint": "npr standard",
     "test": "npm run lint && node test/index.js"
   },
-  "author": "",
-  "license": "private",
+  "author": "Raynos <raynos2@gmail.com>",
+  "repository": "git://github.com/optoolco/async-level.git",
+  "homepage": "https://github.com/optoolco/async-level",
+  "bugs": {
+    "url": "https://github.com/optoolco/async-level/issues",
+    "email": "raynos2@gmail.com"
+  },
+  "contributors": [
+    {
+      "name": "Raynos"
+    },
+    {
+      "name": "heapwolf"
+    }
+  ],
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "http://github.com/optoolco/async-level/raw/master/LICENSE"
+    }
+  ],
   "binDependencies": {
     "standard": "14.3.1"
   },
