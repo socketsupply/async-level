@@ -2,7 +2,93 @@
 
 Create an Async friendly interface around leveldown.
 
-## Example
+Lightweight, zero dependency, single file alternative to `levelup`.
+
+## Example (put, get)
+
+```js
+const LevelDown = require('leveldown')
+const AsyncLevel = require('async-level')
+
+const leveldown = LevelDown('/db/path')
+const db = new AsyncLevel(leveldown, {
+  encode: JSON.stringify,
+  decode: JSON.parse
+})
+
+const { err: openErr } = await levelDB.open()
+if (openErr) throw
+
+const { err } = await levelDB.put('foo#three', {
+  id: 'use id',
+  email: 'foo@gmail.com'
+})
+
+const { err, data: value } = await levelDB.get('foo#one')
+// value is decoded, with JSON.parse.
+```
+
+## Example (async iterator)
+
+```js
+const LevelDown = require('leveldown')
+const AsyncLevel = require('async-level')
+
+const leveldown = LevelDown('/db/path')
+const db = new AsyncLevel(leveldown, {
+  encode: JSON.stringify,
+  decode: JSON.parse
+})
+
+const { err: openErr } = await levelDB.open()
+if (openErr) throw
+
+// This returns an AsyncIterator instead of returning a leveldown
+// iterator object.
+// You can use for await (const pair of itr) loops over it.
+const itr1 = levelDB.iterator({
+  gte: 'foo' + '\x00',
+  lte: 'foo' + '\xFF',
+  keyAsBuffer: false
+})
+
+const result = await itr.next()
+// result.done
+// result.value.err
+// The data here is decoded with JSON.parse
+// result.value.data
+```
+
+## Example (batch)
+
+```js
+const LevelDown = require('leveldown')
+const AsyncLevel = require('async-level')
+
+const leveldown = LevelDown('/db/path')
+const db = new AsyncLevel(leveldown, {
+  encode: JSON.stringify,
+  decode: JSON.parse
+})
+
+const { err: openErr } = await levelDB.open()
+if (openErr) throw
+
+const { err } = await levelDB.batch([
+  {
+    type: 'put',
+    key: ['foo', 'one'],
+    value: { any: 'json object' }
+  },
+  {
+    type: 'put',
+    key: ['foo', 'two'],
+    value: { your: 'encode func called' }
+  }
+])
+```
+
+## Example (key encoding)
 
 ```js
 const LevelDown = require('leveldown')
@@ -18,19 +104,6 @@ const db = new AsyncLevel(leveldown, {
 
 await levelDB.open()
 
-const { err } = await levelDB.batch([
-  {
-    type: 'put',
-    key: ['foo', 'one'],
-    value: { any: 'json object' }
-  },
-  {
-    type: 'put',
-    key: ['foo', 'two'],
-    value: { your: 'encode func called' }
-  }
-])
-
 const { err } = await levelDB.put(['foo', 'three'], {
   id: 'use id',
   email: 'foo@gmail.com'
@@ -39,20 +112,11 @@ const { err } = await levelDB.put(['foo', 'three'], {
 const { err, data: value } = await levelDB.get(['foo', 'one'])
 // value is decoded, with JSON.parse.
 
-// This returns an AsyncIterator instead of returning a leveldown
-// iterator object.
-// You can use for await (const pair of itr) loops over it.
 const itr1 = levelDB.iterator({
   gte: ['foo', charwise.LO],
   lte: ['foo', charwise.HI],
   keyAsBuffer: false
 })
-
-const result = await itr.next()
-// result.done
-// result.value.err
-// The data here is decoded with JSON.parse
-// result.value.data
 ```
 
 ## Documentation
