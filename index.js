@@ -82,8 +82,20 @@ class AsyncLevelDown {
     this.encode = options.encode || identity
     // Function to decode values
     this.decode = options.decode || identity
-    // Functino to encode keys
+    // Function to encode keys
     this.keyEncode = options.keyEncode || identity
+
+    if (options.keyEncoding) {
+      throw new Error('options.keyEncoding not supported')
+    }
+    if (options.valueEncoding && options.valueEncoding !== 'json') {
+      throw new Error('only valueEncoding: "json" is supported')
+    }
+
+    if (options.valueEncoding === 'JSON') {
+      this.encode = JSON.stringify
+      this.decode = JSON.parse
+    }
 
     this._isOpen = false
     this._pendingEnsure = null
