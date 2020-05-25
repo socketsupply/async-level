@@ -8,7 +8,7 @@ Lightweight, zero dependency, single file alternative to `levelup`.
 
 ```js
 const LevelDown = require('leveldown')
-const AsyncLevel = require('async-level')
+const AsyncLevel = require('@optoolco/_async-level')
 
 const leveldown = LevelDown('/db/path')
 const db = new AsyncLevel(leveldown, {
@@ -32,7 +32,7 @@ const { err, data: value } = await levelDB.get('foo#one')
 
 ```js
 const LevelDown = require('leveldown')
-const AsyncLevel = require('async-level')
+const AsyncLevel = require('@optoolco/_async-level')
 
 const leveldown = LevelDown('/db/path')
 const db = new AsyncLevel(leveldown, {
@@ -63,7 +63,7 @@ const result = await itr.next()
 
 ```js
 const LevelDown = require('leveldown')
-const AsyncLevel = require('async-level')
+const AsyncLevel = require('@optoolco/_async-level')
 
 const leveldown = LevelDown('/db/path')
 const db = new AsyncLevel(leveldown, {
@@ -92,7 +92,7 @@ const { err } = await levelDB.batch([
 
 ```js
 const LevelDown = require('leveldown')
-const AsyncLevel = require('async-level')
+const AsyncLevel = require('@optoolco/_async-level')
 const charwise = require('charwise-compact')
 
 const leveldown = LevelDown('/db/path')
