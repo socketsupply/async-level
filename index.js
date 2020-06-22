@@ -144,6 +144,14 @@ class AsyncLevelDown {
     })
   }
 
+  clear (options) {
+    return new Promise((resolve) => {
+      this.leveldown.clear(options, (err) => {
+        resolve(new Result(err, null))
+      })
+    })
+  }
+
   close () {
     return new Promise((resolve) => {
       this.leveldown.close((err) => {

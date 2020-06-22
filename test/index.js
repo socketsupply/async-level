@@ -220,6 +220,46 @@ test('can query a range', async (assert) => {
   assert.end()
 })
 
+test('can clear range', async (assert) => {
+  const dbPath = path.join(os.tmpdir(), uuid())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {
+    encode: JSON.stringify,
+    decode: JSON.parse
+  })
+
+  await levelDB.open()
+
+  await levelDB.batch([
+    { type: 'put', key: '/foo', value: 'one' },
+    { type: 'put', key: '/foo/one', value: 'two' },
+    { type: 'put', key: '/foo/two', value: 'three' },
+    { type: 'put', key: '/foo/two2', value: 'eight' },
+    { type: 'put', key: '/foo/two3', value: 'nine' },
+    { type: 'put', key: '/foo/two4', value: 'ten' },
+    { type: 'put', key: '/bar', value: 'one' }
+  ])
+
+  await levelDB.clear({
+    gte: '/foo/two\x00',
+    lte: '/foo/two\xFF'
+  })
+
+  const itr = levelDB.iterator({
+    gte: '\x00',
+    lte: '\xFF',
+    keyAsBuffer: false
+  })
+  const values = await drainIterator(itr)
+  assert.deepEqual(values, [
+    { key: '/bar', value: 'one' },
+    { key: '/foo', value: 'one' },
+    { key: '/foo/one', value: 'two' },
+    { key: '/foo/two', value: 'three' }
+  ])
+
+  assert.end()
+})
+
 test('itr can batch next', async (assert) => {
   const dbPath = path.join(os.tmpdir(), uuid())
   const levelDB = new AsyncLevel(LevelDown(dbPath), {
