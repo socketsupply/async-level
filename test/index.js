@@ -260,6 +260,48 @@ test('can clear range', async (assert) => {
   assert.end()
 })
 
+test('can clear range with keyEncode', async (assert) => {
+  const dbPath = path.join(os.tmpdir(), uuid())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {
+    encode: JSON.stringify,
+    keyEncode: charwise.encode,
+    decode: JSON.parse
+  })
+
+  await levelDB.open()
+
+  const { err } = await levelDB.batch([
+    { type: 'put', key: ['foo'], value: 'one' },
+    { type: 'put', key: ['foo', 'one'], value: 'two' },
+    { type: 'put', key: ['foo', 'two'], value: 'three' },
+    { type: 'put', key: ['foo', 'two2'], value: 'eight' },
+    { type: 'put', key: ['foo', 'two3'], value: 'nine' },
+    { type: 'put', key: ['foo', 'two4'], value: 'ten' },
+    { type: 'put', key: ['bar'], value: 'one' }
+  ])
+  assert.ifError(err)
+
+  await levelDB.clear({
+    gt: ['foo', 'two'],
+    lte: ['foo', 'two\uFFFF']
+  })
+
+  const itr = levelDB.iterator({
+    gte: [charwise.LO],
+    lte: [charwise.HI],
+    keyAsBuffer: false
+  })
+  const values = await drainIterator(itr)
+  assert.deepEqual(values, [
+    { key: 'KJbar!', value: 'one' },
+    { key: 'KJfoo!', value: 'one' },
+    { key: 'KJfoo"Jone!', value: 'two' },
+    { key: 'KJfoo"Jtwo!', value: 'three' }
+  ])
+
+  assert.end()
+})
+
 test('itr can batch next', async (assert) => {
   const dbPath = path.join(os.tmpdir(), uuid())
   const levelDB = new AsyncLevel(LevelDown(dbPath), {
@@ -478,6 +520,56 @@ test('charwise encode iterator', async (assert) => {
     'KJfoo"J11!',
     'KJfoo"J2!',
     'KJfoo"J21!'
+  ])
+
+  await levelDB.close()
+  await util.promisify((cb) => {
+    LevelDown.destroy(dbPath, cb)
+  })()
+  assert.end()
+
+  function makePut (key) {
+    return { type: 'put', key, value: 'A' }
+  }
+})
+
+test('charwise encode UTF8 iterator', async (assert) => {
+  const dbPath = path.join(os.tmpdir(), uuid())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {
+    encode: JSON.stringify,
+    keyEncode: charwise.encode,
+    decode: JSON.parse
+  })
+
+  await levelDB.open()
+
+  await levelDB.batch([
+    makePut(['bucketName', 'logs/']),
+    makePut(['bucketName', 'logs/one.txt']),
+    makePut(['bucketName', 'logs/three.txt']),
+    makePut(['bucketName', 'logs/two.txt']),
+    makePut(['bucketName', 'logs/ąone.txt']),
+    makePut(['bucketName', 'logs/āone.txt']),
+    makePut(['bucketName', 'logs2/three.txt']),
+    makePut(['bucketName2', 'logs/three.txt'])
+  ])
+
+  const itr1 = levelDB.iterator({
+    gt: ['bucketName', 'logs/'],
+    lte: ['bucketName', 'logs/\uFFFF'],
+    keyAsBuffer: false
+  })
+
+  const values1 = await drainIterator(itr1)
+  const keys = values1.map(r => r.key)
+  assert.equal(keys.length, 5)
+
+  assert.deepEqual(keys, [
+    'KJbucketName"Jlogs/one.txt!',
+    'KJbucketName"Jlogs/three.txt!',
+    'KJbucketName"Jlogs/two.txt!',
+    'KJbucketName"Jlogs/āone.txt!',
+    'KJbucketName"Jlogs/ąone.txt!'
   ])
 
   await levelDB.close()

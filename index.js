@@ -145,8 +145,14 @@ class AsyncLevelDown {
   }
 
   clear (options) {
+    const copyOpts = {}
+    for (const k of Object.keys(options)) {
+      copyOpts[k] = ltgtKeys.includes(k)
+        ? this.keyEncode(options[k]) : options[k]
+    }
+
     return new Promise((resolve) => {
-      this.leveldown.clear(options, (err) => {
+      this.leveldown.clear(copyOpts, (err) => {
         resolve(new Result(err, null))
       })
     })
