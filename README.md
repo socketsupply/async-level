@@ -228,6 +228,12 @@ The `type` field can be `'put'` or `'del'`
 If you specified `encode`, `decode` or `keyEncode` in the constructor
 then those will be respected for encoding of `key` and `value`.
 
+### `const { err } = await db.clear(options)`
+
+Clear a range of key/value pairs in the levelDB database.
+Options are passed to `leveldown.clear()` and include:
+ `gt`, `gte`, `lt`, `lte`, `reverse`, `limit`.
+
 ### `const itr = db.iterator(options)`
 
 Creates an `AsyncIterator` for the database. Note that this method
