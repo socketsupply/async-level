@@ -303,7 +303,7 @@ the highWaterMark that you pass to leveldown (default 16kb).
 ## install
 
 ```
-% npm install optoolco/async-level
+% npm install async-level
 ```
 
-## No License.
+## MIT License.
