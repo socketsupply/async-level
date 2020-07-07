@@ -102,6 +102,7 @@ class AsyncLevelDown {
   }
 
   async ensure () {
+    assert(!this.closed, 'cannot ensure() after close()')
     if (this._isOpen) return
     if (this._pendingEnsure) return this._pendingEnsure
 
@@ -120,6 +121,7 @@ class AsyncLevelDown {
   }
 
   async _ensure () {
+    assert(!this.closed, 'cannot _ensure() after close()')
     const loc = this.leveldown.location
 
     if (loc && typeof loc === 'string') {
@@ -137,7 +139,9 @@ class AsyncLevelDown {
   }
 
   open () {
+    assert(!this.closed, 'cannot open() after close()')
     return new Promise((resolve) => {
+      assert(!this.closed, 'cannot open() after close()')
       this.leveldown.open((err) => {
         resolve(new Result(err, null))
       })
@@ -145,6 +149,7 @@ class AsyncLevelDown {
   }
 
   clear (options) {
+    assert(!this.closed, 'cannot clear() after close()')
     const copyOpts = {}
     for (const k of Object.keys(options)) {
       copyOpts[k] = ltgtKeys.includes(k)
@@ -152,6 +157,7 @@ class AsyncLevelDown {
     }
 
     return new Promise((resolve) => {
+      assert(!this.closed, 'cannot clear() after close()')
       this.leveldown.clear(copyOpts, (err) => {
         resolve(new Result(err, null))
       })
@@ -159,6 +165,8 @@ class AsyncLevelDown {
   }
 
   close () {
+    assert(!this.closed, 'cannot close() after close()')
+    this.closed = true
     return new Promise((resolve) => {
       this.leveldown.close((err) => {
         resolve(new Result(err, null))
@@ -167,6 +175,7 @@ class AsyncLevelDown {
   }
 
   put (key, value, options) {
+    assert(!this.closed, 'cannot put() after close()')
     const encodedKey = this.keyEncode(key)
 
     return new Promise((resolve) => {
@@ -178,6 +187,7 @@ class AsyncLevelDown {
         return resolve(new Result(encErr, null))
       }
 
+      assert(!this.closed, 'cannot put() after close()')
       this.leveldown.put(
         encodedKey, rawValue, options || null,
         (err) => {
@@ -188,8 +198,10 @@ class AsyncLevelDown {
   }
 
   get (key, options) {
+    assert(!this.closed, 'cannot get() after close()')
     const encodedKey = this.keyEncode(key)
     return new Promise((resolve) => {
+      assert(!this.closed, 'cannot get() after close()')
       this.leveldown.get(
         encodedKey, options || null,
         (err, value) => {
@@ -219,8 +231,10 @@ class AsyncLevelDown {
   }
 
   del (key, options) {
+    assert(!this.closed, 'cannot del() after close()')
     const encodedKey = this.keyEncode(key)
     return new Promise((resolve) => {
+      assert(!this.closed, 'cannot del() after close()')
       this.leveldown.del(encodedKey, options || null, (err) => {
         resolve(new Result(err, null))
       })
@@ -228,6 +242,7 @@ class AsyncLevelDown {
   }
 
   iterator (options) {
+    assert(!this.closed, 'cannot iterator() after close()')
     const copyOpts = {}
     for (const k of Object.keys(options)) {
       copyOpts[k] = ltgtKeys.includes(k)
@@ -235,10 +250,11 @@ class AsyncLevelDown {
     }
 
     const rawItr = this.leveldown.iterator(copyOpts)
-    return new LevelAsyncIterator(rawItr, this.decode)
+    return new LevelAsyncIterator(rawItr, this.decode, this)
   }
 
   batch (operations, options) {
+    assert(!this.closed, 'cannot batch() after close()')
     return new Promise((resolve) => {
       const rawOperations = new Array(operations.length)
       for (let i = 0; i < operations.length; i++) {
@@ -257,6 +273,7 @@ class AsyncLevelDown {
         )
       }
 
+      assert(!this.closed, 'cannot batch() after close()')
       this.leveldown.batch(
         rawOperations, options || null, (err) => {
           resolve(new Result(err, null))
@@ -283,9 +300,11 @@ class AsyncLevelDown {
  *    `HighWaterMark` or upto 1000 key/value pairs.
  */
 class LevelAsyncIterator {
-  constructor (levelDownItr, decode) {
+  constructor (levelDownItr, decode, asyncLevel) {
+    assert(asyncLevel, 'asyncLevel required')
     this._iterator = levelDownItr
     this._landed = false
+    this.asyncLevel = asyncLevel
 
     this.decode = decode
     this.finished = false
@@ -301,6 +320,7 @@ class LevelAsyncIterator {
    * See https://github.com/nodejs/node/blob/master/lib/internal/streams/async_iterator.js
    */
   next () {
+    assert(!this.asyncLevel.closed, 'cannot next() after close()')
     if (this.pendingNext) {
       throw new Error(
         'It is not safe to call Iterator.next() concurrently'
@@ -313,6 +333,7 @@ class LevelAsyncIterator {
         return resolve(new IteratorResult(true, null))
       }
 
+      assert(!this.asyncLevel.closed, 'cannot next() after close()')
       this._iterator.next((err, key, value) => {
         this.pendingNext = false
         if (err) {
@@ -349,6 +370,7 @@ class LevelAsyncIterator {
     const keys = []
     const values = []
 
+    assert(!this.asyncLevel.closed, 'cannot batchNext() after close()')
     self._iterator.next(onNext)
 
     function onNext (err, key, value) {
@@ -376,6 +398,7 @@ class LevelAsyncIterator {
       if (!self._landed) {
         self._landed = true
         if (cache.length === 0) {
+          assert(!self.asyncLevel.closed, 'cannot next() after close()')
           return self._iterator.next(onNext)
         }
       }
@@ -394,6 +417,7 @@ class LevelAsyncIterator {
    * an exception if leveldown does not support the use case.
    */
   batchNext () {
+    assert(!this.asyncLevel.closed, 'cannot batchNext() after close()')
     if (this.pendingNext) {
       throw new Error(
         'It is not safe to call Iterator.batchNext() concurrently'
@@ -445,6 +469,7 @@ class LevelAsyncIterator {
     }
 
     this.finished = true
+    assert(!this.asyncLevel.closed, 'cannot _finish() after close()')
     this._iterator.end(onFinish)
 
     function onFinish (finishErr) {
@@ -463,6 +488,7 @@ class LevelAsyncIterator {
   }
 
   async close () {
+    assert(!this.asyncLevel.closed, 'cannot close() after close()')
     return new Promise((resolve) => {
       this._finish((result) => {
         const v = result.value
