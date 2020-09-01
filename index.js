@@ -390,7 +390,12 @@ class LevelAsyncIterator {
       keys.push(key)
       values.push(value)
 
-      const cache = self._iterator.cache
+      let cache
+      if (typeof self._iterator.getCache === 'function') {
+        cache = self._iterator.getCache()
+      } else {
+        cache = self._iterator.cache
+      }
       if (!cache) {
         throw new Error('LevelDown does not have cache array')
       }
