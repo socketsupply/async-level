@@ -1,10 +1,7 @@
 'use strict'
 
 const assert = require('assert')
-const fs = require('fs')
-const util = require('util')
 
-const mkdir = util.promisify(fs.mkdir)
 const notFoundRegex = /notfound/i
 const ltgtKeys = ['lt', 'gt', 'lte', 'gte', 'start', 'end']
 
@@ -122,12 +119,6 @@ class AsyncLevelDown {
 
   async _ensure () {
     assert(!this.closed, 'cannot _ensure() after close()')
-    const loc = this.leveldown.location
-
-    if (loc && typeof loc === 'string') {
-      await mkdir(loc, { recursive: true })
-    }
-
     const { err } = await this.open()
     if (err) {
       this.leveldown = null
@@ -390,7 +381,12 @@ class LevelAsyncIterator {
       keys.push(key)
       values.push(value)
 
-      const cache = self._iterator.cache
+      let cache
+      if (typeof self._iterator.getCache === 'function') {
+        cache = self._iterator.getCache()
+      } else {
+        cache = self._iterator.cache
+      }
       if (!cache) {
         throw new Error('LevelDown does not have cache array')
       }
