@@ -1,7 +1,5 @@
 'use strict'
 
-const assert = require('assert')
-
 const notFoundRegex = /notfound/i
 const ltgtKeys = ['lt', 'gt', 'lte', 'gte', 'start', 'end']
 
@@ -497,3 +495,9 @@ class LevelAsyncIterator {
 module.exports = AsyncLevelDown
 
 function identity (x) { return x }
+
+function assert (val, msg) {
+  if (!val) {
+    throw new Error(msg || 'Assertion failed')
+  }
+}
