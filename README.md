@@ -17,7 +17,7 @@ const db = new AsyncLevel(leveldown, {
 })
 
 const { err: openErr } = await levelDB.open()
-if (openErr) throw
+if (openErr) throw openErr
 
 const { err } = await levelDB.put('foo#three', {
   id: 'user id',
