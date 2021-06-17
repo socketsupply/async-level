@@ -9,23 +9,41 @@ Lightweight, zero dependency, single file alternative to `levelup`.
 ```js
 const LevelDown = require('leveldown')
 const AsyncLevel = require('async-level')
+const path = require('path')
+const os = require('os')
+const uuid = require('uuid')
+const util = require('util')
 
-const leveldown = LevelDown('/db/path')
-const db = new AsyncLevel(leveldown, {
-  encode: JSON.stringify,
-  decode: JSON.parse
-})
+async function run () {
+  const dbPath = path.join(os.tmpdir(), uuid.v4())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {
+    encode: JSON.stringify,
+    decode: JSON.parse
+  })
 
-const { err: openErr } = await levelDB.open()
-if (openErr) throw openErr
+  const { err: openErr } = await levelDB.open()
+  if (openErr) throw Error(openErr)
+  {
+    const { err } = await levelDB.put('foo#three', {
+      id: 'user id',
+      email: 'foo@gmail.com'
+    })
+    if (err) throw Error(err)
+  }
+  {
+    const { err, data: value } = await levelDB.get('foo#three')
+    if (err) throw Error(err)
+    // value is decoded, with JSON.parse.
+    console.log(`Loaded value ${JSON.stringify(value)}`)
+  }
 
-const { err } = await levelDB.put('foo#three', {
-  id: 'user id',
-  email: 'foo@gmail.com'
-})
+  await levelDB.close()
+  await util.promisify((cb) => {
+    LevelDown.destroy(dbPath, cb)
+  })()
+}
 
-const { err, data: value } = await levelDB.get('foo#one')
-// value is decoded, with JSON.parse.
+run()
 ```
 
 ## Example (async iterator)
@@ -33,30 +51,50 @@ const { err, data: value } = await levelDB.get('foo#one')
 ```js
 const LevelDown = require('leveldown')
 const AsyncLevel = require('async-level')
+const util = require('util')
+const path = require('path')
+const os = require('os')
+const uuid = require('uuid')
+const util = require('util')
 
-const leveldown = LevelDown('/db/path')
-const db = new AsyncLevel(leveldown, {
-  encode: JSON.stringify,
-  decode: JSON.parse
-})
+async function run () {
+  const dbPath = path.join(os.tmpdir(), uuid.v4())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {
+    encode: JSON.stringify,
+    decode: JSON.parse
+  })
 
-const { err: openErr } = await levelDB.open()
-if (openErr) throw
+  const { err: openErr } = await levelDB.open()
+  if (openErr) throw Error(openErr)
+  {
+    // This returns an AsyncIterator instead of returning a leveldown
+    // iterator object.
+    // You can use for await (const pair of itr) loops over it.
+    const itr = levelDB.iterator({
+      gte: 'foo' + '\x00',
+      lte: 'foo' + '\xFF',
+      keyAsBuffer: false
+    })
 
-// This returns an AsyncIterator instead of returning a leveldown
-// iterator object.
-// You can use for await (const pair of itr) loops over it.
-const itr1 = levelDB.iterator({
-  gte: 'foo' + '\x00',
-  lte: 'foo' + '\xFF',
-  keyAsBuffer: false
-})
+    const result = await itr.next()
+    console.log(`Iterated value = ${JSON.stringify(result)}`)
 
-const result = await itr.next()
-// result.done
-// result.value.err
-// The data here is decoded with JSON.parse
-// result.value.data
+    await levelDB.close()
+    await util.promisify((cb) => {
+      LevelDown.destroy('./leveldbtest', cb)
+    })()
+    // result.done
+    // result.value.err
+    // The data here is decoded with JSON.parse
+    // result.value.data
+  }
+  await levelDB.close()
+  await util.promisify((cb) => {
+    LevelDown.destroy(dbPath, cb)
+  })()
+}
+
+run()
 ```
 
 ## Example (batch)
@@ -64,28 +102,42 @@ const result = await itr.next()
 ```js
 const LevelDown = require('leveldown')
 const AsyncLevel = require('async-level')
+const path = require('path')
+const os = require('os')
+const uuid = require('uuid')
+const util = require('util')
 
-const leveldown = LevelDown('/db/path')
-const db = new AsyncLevel(leveldown, {
-  encode: JSON.stringify,
-  decode: JSON.parse
-})
+async function run () {
+  const dbPath = path.join(os.tmpdir(), uuid.v4())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {
+    encode: JSON.stringify,
+    decode: JSON.parse
+  })
 
-const { err: openErr } = await levelDB.open()
-if (openErr) throw
-
-const { err } = await levelDB.batch([
+  const { err: openErr } = await levelDB.open()
+  if (openErr) throw Error(openErr)
   {
-    type: 'put',
-    key: 'foo#one',
-    value: { any: 'json object' }
-  },
-  {
-    type: 'put',
-    key: 'foo#two',
-    value: { your: 'encode func called' }
+    const { err } = await levelDB.batch([
+      {
+        type: 'put',
+        key: 'foo#one',
+        value: { any: 'json object' }
+      },
+      {
+        type: 'put',
+        key: 'foo#two',
+        value: { your: 'encode func called' }
+      }
+    ])
+    if (err) throw err
   }
-])
+  await levelDB.close()
+  await util.promisify((cb) => {
+    LevelDown.destroy(dbPath, cb)
+  })()
+}
+
+run()
 ```
 
 ## Example (key encoding)
@@ -94,29 +146,47 @@ const { err } = await levelDB.batch([
 const LevelDown = require('leveldown')
 const AsyncLevel = require('async-level')
 const charwise = require('charwise-compact')
+const path = require('path')
+const os = require('os')
+const uuid = require('uuid')
+const util = require('util')
 
-const leveldown = LevelDown('/db/path')
-const db = new AsyncLevel(leveldown, {
-  encode: JSON.stringify,
-  keyEncode: charwise.encode,
-  decode: JSON.parse
-})
+async function run () {
+  const dbPath = path.join(os.tmpdir(), uuid.v4())
+  const levelDB = new AsyncLevel(LevelDown(dbPath), {
+    encode: JSON.stringify,
+    keyEncode: charwise.encode,
+    decode: JSON.parse
+  })
 
-await levelDB.open()
+  const { err: openErr } = await levelDB.open()
+  if (openErr) throw Error(openErr)
+  {
+    const { err } = await levelDB.put(['foo', 'three'], {
+      id: 'use id',
+      email: 'foo@gmail.com'
+    })
+    if (err) throw err
+  }
+  {
+    const { err, data: value } = await levelDB.get(['foo', 'three'])
+    if (err) throw err
+    console.log(`Loaded value ${JSON.stringify(value)}`)
+  }
+  {
+    const itr1 = levelDB.iterator({
+      gte: ['foo', charwise.LO],
+      lte: ['foo', charwise.HI],
+      keyAsBuffer: false
+    })
+  }
+  await levelDB.close()
+  await util.promisify((cb) => {
+    LevelDown.destroy(dbPath, cb)
+  })()
+}
 
-const { err } = await levelDB.put(['foo', 'three'], {
-  id: 'use id',
-  email: 'foo@gmail.com'
-})
-
-const { err, data: value } = await levelDB.get(['foo', 'one'])
-// value is decoded, with JSON.parse.
-
-const itr1 = levelDB.iterator({
-  gte: ['foo', charwise.LO],
-  lte: ['foo', charwise.HI],
-  keyAsBuffer: false
-})
+run()
 ```
 
 ## Motivation
